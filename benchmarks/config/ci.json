@@ -1,0 +1,30 @@
+{
+  "random_seed": 42,
+  "stopwords_path": "data/stopwords_vi.txt",
+  "output_dir": "benchmarks/results",
+  "dataset_sizes": [5000],
+  "scaling_sizes": [5000, 50000],
+  "indexing_thread_counts": [1, 2],
+  "concurrency_thread_counts": [1, 2, 4],
+  "queries_per_type": 100,
+  "warmup_queries": 10,
+  "avg_doc_length": 100,
+  "vocabulary_size": 5000,
+  "num_topics": 25,
+  "mixed_workload": {
+    "keyword": 0.6,
+    "phrase": 0.2,
+    "boolean": 0.1,
+    "fuzzy": 0.1
+  },
+  "stress": {
+    "initial_threads": 1,
+    "max_threads": 16,
+    "step": 4,
+    "queries_per_level": 50
+  },
+  "cache_cold_iterations": 3,
+  "cache_warm_iterations": 50,
+  "skip_large_datasets": true,
+  "large_dataset_threshold": 100000
+}

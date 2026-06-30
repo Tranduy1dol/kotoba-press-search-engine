@@ -33,7 +33,7 @@ foreach(TEST_FILE ${TEST_SOURCES})
   get_filename_component(TEST_NAME ${TEST_FILE} NAME_WE)
   add_executable(${TEST_NAME} ${TEST_FILE})
   target_link_libraries(${TEST_NAME} PRIVATE
-    search_lib
+    search_core_lib
     GTest::gtest_main
   )
   target_compile_definitions(${TEST_NAME} PRIVATE

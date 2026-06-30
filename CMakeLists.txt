@@ -28,11 +28,12 @@ set(LEXBOR_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(LEXBOR_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(lexbor)
 
-file(GLOB_RECURSE SEARCH_LIB_SOURCES
+file(GLOB_RECURSE SEARCH_CORE_SOURCES
   "${CMAKE_SOURCE_DIR}/src/*.cpp"
 )
+list(FILTER SEARCH_CORE_SOURCES EXCLUDE REGEX ".*/server/.*")
 
-add_library(search_lib STATIC ${SEARCH_LIB_SOURCES})
+add_library(search_core_lib STATIC ${SEARCH_CORE_SOURCES})
 
 find_package(Protobuf REQUIRED)
 find_package(PkgConfig REQUIRED)
@@ -49,28 +50,31 @@ target_link_libraries(grpc_service PUBLIC
 )
 target_include_directories(grpc_service PUBLIC ${GRPC_INCLUDE_DIRS})
 
+add_library(search_lib STATIC
+  "${CMAKE_SOURCE_DIR}/src/server/search_service.cpp"
+)
+target_link_libraries(search_lib PUBLIC search_core_lib grpc_service)
+
 add_executable(search_server app/server_main.cpp)
-target_link_libraries(search_server PRIVATE search_lib grpc_service)
+target_link_libraries(search_server PRIVATE search_lib)
 target_include_directories(search_server PRIVATE
   "${CMAKE_SOURCE_DIR}/include"
   "${CMAKE_SOURCE_DIR}/generated"
 )
 
 find_package(CURL REQUIRED)
-target_link_libraries(search_lib
+target_link_libraries(search_core_lib
   PRIVATE
     CURL::libcurl
     lexbor_static
-    grpc_service
     mecab
 )
 
-target_include_directories(search_lib PUBLIC
+target_include_directories(search_core_lib PUBLIC
   "${CMAKE_SOURCE_DIR}/include"
-  "${CMAKE_SOURCE_DIR}/generated"
 )
 
-target_compile_features(search_lib PUBLIC cxx_std_17)
+target_compile_features(search_core_lib PUBLIC cxx_std_17)
 
 foreach(APP crawl indexer search)
   if(APP STREQUAL "indexer")
@@ -86,3 +90,8 @@ endforeach()
 
 enable_testing()
 add_subdirectory(tests)
+
+option(BUILD_BENCHMARKS "Build benchmark suite" ON)
+if(BUILD_BENCHMARKS)
+  add_subdirectory(benchmarks)
+endif()
