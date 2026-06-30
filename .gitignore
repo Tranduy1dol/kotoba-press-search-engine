@@ -70,5 +70,8 @@ Thumbs.db
 # Index data (generated, may contain sensitive content)
 data/index/
 
+# Benchmark results (generated)
+benchmarks/results/
+
 # Generated protobuf/gRPC code
 generated/

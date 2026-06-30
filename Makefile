@@ -29,3 +29,11 @@ run-search: build
 .PHONY: run-indexer
 run-indexer: build
 	./$(BUILD_DIR)/indexer $(ARGS)
+
+.PHONY: benchmark
+benchmark:
+	BUILD_TYPE=Release ./benchmarks/run_benchmarks.sh
+
+.PHONY: benchmark-quick
+benchmark-quick:
+	BUILD_TYPE=Release ./benchmarks/run_benchmarks.sh --quick --config benchmarks/config/quick.json

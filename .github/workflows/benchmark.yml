@@ -1,0 +1,89 @@
+name: Benchmark
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: benchmark-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    # Only comment on same-repo PRs (fork PRs lack write token for comments).
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake pkg-config git \
+            libcurl4-openssl-dev \
+            libgrpc++-dev libprotobuf-dev protobuf-compiler-grpc \
+            libmecab-dev mecab-ipadic-utf8 \
+            python3 python3-pip
+
+      - name: Install chart dependencies (optional)
+        run: pip install --break-system-packages -r benchmarks/scripts/requirements.txt
+        continue-on-error: true
+
+      - name: Generate protobuf
+        run: |
+          mkdir -p generated/grpc_service/v1
+          protoc --proto_path=proto \
+            --cpp_out=generated \
+            --grpc_out=generated \
+            --plugin=protoc-gen-grpc=$(which grpc_cpp_plugin) \
+            grpc_service/v1/search.proto
+
+      - name: Build benchmark suite
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_BENCHMARKS=ON
+          cmake --build build --target benchmark_suite -j"$(nproc)"
+
+      - name: Run benchmarks
+        run: |
+          ./build/benchmarks/benchmark_suite \
+            --config benchmarks/config/ci.json \
+            --seed 42
+
+      - name: Generate charts
+        run: |
+          RESULTS=$(ls -td benchmarks/results/*/ | head -1)
+          python3 benchmarks/scripts/generate_charts.py "${RESULTS}results.json"
+        continue-on-error: true
+
+      - name: Locate results
+        id: results
+        run: |
+          RESULTS_DIR=$(ls -td benchmarks/results/*/ | head -1)
+          echo "dir=${RESULTS_DIR}" >> "$GITHUB_OUTPUT"
+          echo "json=${RESULTS_DIR}results.json" >> "$GITHUB_OUTPUT"
+
+      - name: Upload benchmark artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: benchmarks/results/
+          retention-days: 14
+
+      - name: Format PR comment
+        id: comment
+        run: |
+          python3 benchmarks/scripts/format_pr_comment.py \
+            "${{ steps.results.outputs.json }}" > /tmp/benchmark_comment.md
+
+      - name: Post PR comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: search-benchmark
+          path: /tmp/benchmark_comment.md
