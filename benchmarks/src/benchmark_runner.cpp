@@ -6,10 +6,12 @@
 #include <future>
 #include <iostream>
 #include <mutex>
+#include <sstream>
 #include <thread>
 #include <vector>
 
 #include "benchmark/corpus_generator.hpp"
+#include "benchmark/index_stats.hpp"
 #include "benchmark/quality_metrics.hpp"
 #include "benchmark/query_generator.hpp"
 #include "benchmark/report_generator.hpp"
@@ -31,7 +33,9 @@ json LatencyStatsToJson(const LatencyStats& s) {
               {"avg_ms", s.avg_ms},
               {"max_ms", s.max_ms},
               {"min_ms", s.min_ms},
+              {"stddev_ms", s.stddev_ms},
               {"throughput_qps", s.throughput_qps},
+              {"wall_time_sec", s.wall_time_sec},
               {"total_queries", s.total_queries},
               {"failed_queries", s.failed_queries},
               {"histogram_bins", s.histogram_bins},
@@ -137,6 +141,8 @@ BenchmarkResults BenchmarkRunner::RunAll() {
   BenchmarkResults results;
   results.timestamp = GetTimestamp();
   results.commit_hash = GetCommitHash();
+  results.random_seed = config_.random_seed;
+  results.single_run = true;
 
   auto now = std::chrono::system_clock::now();
   auto time_t_now = std::chrono::system_clock::to_time_t(now);
@@ -156,6 +162,11 @@ BenchmarkResults BenchmarkRunner::RunAll() {
                       config_.avg_doc_length, config_.num_topics);
   auto corpus = gen.Generate(primary_size);
   results.corpus_stats = gen.ComputeStats(corpus);
+
+  search::InvertedIndex stats_index(config_.stopwords_path);
+  BuildIndexFromCorpus(corpus, stats_index);
+  auto index_stats = ComputeIndexStats(stats_index);
+  ExtendCorpusStats(results.corpus_stats, corpus, index_stats);
 
   auto index_path = run_output_dir_ / "index.bin";
   std::cout << "Building index...\n";
@@ -520,6 +531,64 @@ BenchmarkResults BenchmarkRunner::RunAll() {
     level.resources = stress_monitor.GetSummary();
     results.stress_levels.push_back(level);
   }
+
+  results.scope.in_scope = {
+      "InvertedIndex build and DiskIndex serialization",
+      "Searcher::Search latency (BM25, mmap-backed index)",
+      "Concurrent read throughput on shared DiskIndex",
+      "Memory usage during indexing and search",
+      "Synthetic retrieval quality (experimental)"};
+  results.scope.out_of_scope = {
+      "gRPC / network RPC latency",
+      "Distributed or sharded indexing",
+      "LiveIndex concurrent write/read contention",
+      "Crawler and HTML parsing",
+      "Japanese/MeCab tokenization path",
+      "Unsupported query types (phrase, boolean, wildcard, prefix, fuzzy)",
+      "Storage device isolation (SSD vs HDD comparison)"};
+  results.scope.assumptions = {
+      "Corpus and index fit entirely in available RAM",
+      "Single-machine, single-process execution",
+      "Synthetic workload with deterministic seed",
+      "Disk index is mmap'd; OS page cache affects cold vs warm behavior",
+      "No network latency between client and search engine"};
+  results.scope.limitations = {
+      "Single benchmark run per configuration (no repeated-run confidence intervals)",
+      "Quality judgments are synthetic, not human-labeled",
+      "Multi-threaded indexing uses shard-merge, not production code path",
+      "CI and local runs are not comparable across machines"};
+  uint64_t max_scaling = 0;
+  for (uint64_t s : config_.scaling_sizes) {
+    max_scaling = std::max(max_scaling, s);
+  }
+  results.scope.limitations.push_back(
+      "Largest dataset tested in this run: " + std::to_string(max_scaling) +
+      " documents");
+
+  results.workload.queries_per_type = config_.queries_per_type;
+  results.workload.warmup_queries = config_.warmup_queries;
+  results.workload.mixed_workload_profile = config_.mixed_workload;
+  results.workload.cache_state =
+      "Warmup queries executed before measurement; cache benchmark separates "
+      "cold (reload index) vs warm (repeat same query)";
+  results.workload.indexing_strategy =
+      "Single-threaded InvertedIndex::AddDocument; multi-threaded via "
+      "shard-build + merge";
+  if (!config_.concurrency_thread_counts.empty()) {
+    results.workload.concurrency_threads_tested =
+        config_.concurrency_thread_counts.back();
+  }
+  std::ostringstream mix;
+  mix << "Per-type isolated benchmarks (" << config_.queries_per_type
+      << " queries each); mixed workload profile: ";
+  bool first = true;
+  for (const auto& [k, v] : config_.mixed_workload) {
+    if (!first) mix << ", ";
+    mix << k << "=" << static_cast<int>(v * 100) << "%";
+    first = false;
+  }
+  results.workload.query_mix_description = mix.str();
+  results.workload.avg_query_terms = 1.5;
 
   // --- Write reports ---
   std::cout << "Generating reports...\n";

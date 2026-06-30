@@ -129,6 +129,17 @@ QualityMetrics EvaluateQuality(
     const std::vector<RelevanceJudgment>& judgments, size_t k) {
   QualityMetrics metrics;
   metrics.num_queries = judgments.size();
+  metrics.num_judgments = judgments.size();
+  metrics.experimental = true;
+  metrics.judgment_source =
+      "Synthetic: relevant documents identified by substring match of query "
+      "term in corpus text. Not human judgments.";
+  metrics.methodology =
+      "For each query, retrieve top-k results via BM25. Compare retrieved doc "
+      "IDs against synthetic relevant set. Metrics: P@k, Recall@k, MAP, MRR, "
+      "NDCG@k (binary relevance).";
+  metrics.evaluation_dataset =
+      "Same synthetic corpus used for performance benchmarks.";
 
   std::vector<std::vector<uint32_t>> all_retrieved;
   std::vector<std::vector<uint32_t>> all_relevant;
@@ -141,6 +152,7 @@ QualityMetrics EvaluateQuality(
     if (j.relevant_doc_ids.empty()) {
       continue;
     }
+    metrics.num_queries_with_relevance++;
     auto results = searcher.Search(j.query_text, k);
     std::vector<uint32_t> retrieved;
     retrieved.reserve(results.size());
@@ -157,6 +169,7 @@ QualityMetrics EvaluateQuality(
   }
 
   if (valid > 0) {
+    metrics.num_queries_evaluated = valid;
     metrics.precision_at_10 = sum_p10 / static_cast<double>(valid);
     metrics.recall = sum_recall / static_cast<double>(valid);
     metrics.ndcg_at_10 = sum_ndcg / static_cast<double>(valid);

@@ -42,6 +42,8 @@ LatencyStats ComputeLatencyStats(const std::vector<double>& latencies_ms,
   stats.p90_ms = Percentile(sorted, 0.90);
   stats.p95_ms = Percentile(sorted, 0.95);
   stats.p99_ms = Percentile(sorted, 0.99);
+  stats.stddev_ms = StdDev(sorted, stats.avg_ms);
+  stats.wall_time_sec = wall_time_sec;
 
   if (wall_time_sec > 0.0) {
     stats.throughput_qps =
@@ -88,6 +90,18 @@ std::vector<uint64_t> CountHistogram(const std::vector<double>& values,
     }
   }
   return counts;
+}
+
+double StdDev(const std::vector<double>& values, double mean) {
+  if (values.size() < 2) {
+    return 0.0;
+  }
+  double sum_sq = 0.0;
+  for (double v : values) {
+    double d = v - mean;
+    sum_sq += d * d;
+  }
+  return std::sqrt(sum_sq / static_cast<double>(values.size() - 1));
 }
 
 }  // namespace benchmark

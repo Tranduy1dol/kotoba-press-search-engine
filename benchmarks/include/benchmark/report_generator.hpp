@@ -21,11 +21,6 @@ class ReportGenerator {
   std::filesystem::path OutputDir() const { return output_dir_; }
 
  private:
-  std::string FormatLatencyTable(const json& query_benchmarks) const;
-  std::string FormatIndexingTable(
-      const std::vector<IndexingResult>& results) const;
-  std::string FormatSummary(const BenchmarkResults& results) const;
-
   std::filesystem::path output_dir_;
 };
 
